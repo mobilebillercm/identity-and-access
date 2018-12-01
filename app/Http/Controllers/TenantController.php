@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Model\Identity\Category;
+use App\Domain\Model\Identity\Role;
 use App\Domain\Model\Identity\UserRegistrationInvitation;
 use App\Domain\Model\Identity\Person;
 use App\Domain\Model\Identity\Tenant;
@@ -75,19 +76,26 @@ class TenantController extends Controller
         }
 
 
-        $tenantToCreate = new Tenant(
+        $tenantId = Uuid::generate()->string;
 
-            Uuid::generate()->string,
+
+	$tenantToCreate = new Tenant(
+            $tenantId,
             $request->get('tenantname'),
             $request->get('tenantcity'),
             $request->get('tenantregion'),
             $request->get('tenantdescrition'),
             $tenatlogo_path,
-            true
+            true,
+            $request->get('taxpayernumber'),
+            $request->get('numbertraderegister')
         );
 
+
+	    $userid = Uuid::generate()->string;
+
         $tenantDefaultAdminUserToCreate = new User(
-            Uuid::generate()->string,
+            $userid,
             $tenantToCreate->tenantid,
             null,
             $request->get('administratorfirstname'),
@@ -97,6 +105,29 @@ class TenantController extends Controller
             $request->get('administratorphone'),
             $request->get('administratoremail'),
             $request->get('adminitratorpassword'));
+
+
+        $userArray = [$userid];
+
+        $tenantRoleToCreate = new Role(
+            Uuid::generate()->string,
+            $tenantId,
+            'TENANT_ADMINS',
+            'Tenant administrator',
+            '[]',
+            json_encode($userArray),
+            env('TENANT_ADMINS_SCOPES')
+        );
+
+        $userRoleToCreate = new Role(
+            Uuid::generate()->string,
+            $tenantId,
+            'TENANT_USERS',
+            'Tenant user',
+            '[]',
+            '[]',
+            env('TENANT_USERS_SCOPES')
+        );
 
         $tenantSslProvision  = array('tenant'=> $tenantToCreate, 'adminuser'=>$tenantDefaultAdminUserToCreate);
 
@@ -113,6 +144,19 @@ class TenantController extends Controller
 
             $tenantToCreate->save();
             $tenantDefaultAdminUserToCreate->save();
+            $tenantRoleToCreate->save();
+            $userRoleToCreate->save();
+
+
+            /*$defaultRoleId = env('DEFAULT_ROLE_ID');
+                $defaultRoles  = Role::where('roleid', '=', $defaultRoleId)->get();
+                if (count($defaultRoles) === 1){
+                    $defaultRole = $defaultRoles[0];
+                    $usersPlayingDefaultRole = json_decode($defaultRole->usersplayingrole);
+                    array_push($usersPlayingDefaultRole, $tenantDefaultAdminUserToCreate->userid);
+                    $defaultRole->usersplayingrole = json_encode($usersPlayingDefaultRole);
+                    $defaultRole->save();
+                }*/
 
         }catch (\Exception $e){
 
@@ -135,37 +179,6 @@ class TenantController extends Controller
 
         ProcessMessages::dispatch(env('TENANT_PROVISIONED_EXCHANGE'), env('RABBIT_MQ_EXCHANGE_TYPE'), json_encode($tenantProvision));
 
-
-       /* $connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');
-
-
-        try {
-
-
-
-            $channel = $connection->channel();
-
-            $channel->exchange_declare('TENANT_PROVISIONED_EXCHANGE', 'fanout', false, true, false);
-
-
-            $msg = new AMQPMessage( json_encode($tenantProvision), array('delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT));
-
-            $channel->basic_publish($msg, 'TENANT_PROVISIONED_EXCHANGE');
-            $channel->close();
-
-        } catch (\Exception $exception){
-
-
-
-
-        }
-        finally{
-
-            if ($connection != null){
-                $connection->close();
-            }
-
-        }*/
 
 
 
@@ -274,6 +287,27 @@ class TenantController extends Controller
 
         return response(array('success' => 1, 'faillure' => 0, 'response' => 'Tenant reactivated successfully'), 200);
 
+    }
+
+
+    public function getLogo($tenantid){
+        $tenants = Tenant::where('tenantid', '=', $tenantid)->get();
+
+        if (!(count($tenants) === 1)){
+            return response()->make("", 404, array(
+                'Content-Type' => (new \finfo(FILEINFO_MIME))->buffer("")
+            ));
+        }
+        $exists = Storage::disk('local')->exists($tenants[0]->logo);
+        if (!$exists){
+            return response()->make("", 404, array(
+                'Content-Type' => (new \finfo(FILEINFO_MIME))->buffer("")
+            ));
+        }
+        $contents = Storage::disk('local')->get($tenants[0]->logo);
+        return response()->make($contents, 200, array(
+            'Content-Type' => (new \finfo(FILEINFO_MIME))->buffer($contents)
+        ));
     }
 
 

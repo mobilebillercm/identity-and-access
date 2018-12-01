@@ -90,6 +90,12 @@ class ApiAuthProviderService extends Controller
 
         //return response($request->user(), 200);
 
+
+
+        $fp = fopen('t.txt', 'w');
+        fprintf($fp, '%s', $request->get('Authorization'));
+        fclose($fp);
+
         $scopesJsonString = file_get_contents('php://input');
         $scope =  json_decode($scopesJsonString, true);
 
